@@ -3,7 +3,11 @@ import {
   Client, GatewayIntentBits, Partials, Events
 } from 'discord.js';
 import { ensureEnv } from './utils/validate.js';
-import cfg from './config.json' assert { type: 'json' };
+import fs from 'fs';
+import path from 'path';
+
+const cfg = JSON.parse(fs.readFileSync(path.resolve('./src/config.json'), 'utf8'));
+
 import { serverChoiceRow } from './utils/lang.js';
 import { handlePVEMessage } from './utils/pve-handler.js';
 import * as infoCmd from './commands/info.js';
@@ -25,7 +29,6 @@ const client = new Client({
 
 client.once(Events.ClientReady, async () => {
   console.log(`✅ Bot online como ${client.user.tag}`);
-  // Garante que exista a mensagem de abrir ticket no canal especificado
   try {
     const openerId = '1401951493539758152';
     const ch = await client.channels.fetch(openerId);
@@ -38,10 +41,7 @@ client.once(Events.ClientReady, async () => {
   }
 });
 
-// Tabela simples de comandos carregados em memória
-const commands = new Map([
-  [infoCmd.data.name, infoCmd]
-]);
+const commands = new Map([[infoCmd.data.name, infoCmd]]);
 
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
@@ -49,8 +49,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const handler = commands.get(interaction.commandName);
       if (handler?.execute) return handler.execute(interaction);
     }
-
-    // Botões de idioma e seleção de servidor
     if (interaction.isButton()) {
       const { customId } = interaction;
       if (customId === 'lang_pt') {
@@ -67,34 +65,23 @@ client.on(Events.InteractionCreate, async (interaction) => {
           ephemeral: true
         });
       }
-      if (customId === 'choose_rp') {
-        // língua padrão PT; se quiser detectar conforme botão, passe 'es'
-        return startWL(interaction, 'pt');
-      }
+      if (customId === 'choose_rp') return startWL(interaction, 'pt');
       if (customId === 'choose_pve') {
         return interaction.reply({
-          content: `🧾 Para PVE: vá até <#${cfg.canalPVEEntrada}> y envíe su SteamID64 (\`7656119XXXXXXXXXX\`).`,
+          content: `🧾 Para PVE: vá até <#${cfg.canalPVEEntrada}> e envie sua SteamID64.`,
           ephemeral: true
         });
       }
-
-      // Tickets
       if (customId === 'tkt_doacoes') return createTicket(interaction, cfg, 'doacoes');
       if (customId === 'tkt_denuncia') return createTicket(interaction, cfg, 'denuncia');
       if (customId === 'tkt_suporte') return createTicket(interaction, cfg, 'suporte');
       if (customId === 'tkt_finalizar') return finalizeTicket(interaction, cfg);
-
-      // WL aprovar/reprovar
       const handled = await handleWLButtons(interaction);
       if (handled) return;
     }
-
-    // Modals
     if (interaction.isModalSubmit()) {
-      // WL reprovação
       const handledWL = await handleWLModal(interaction);
       if (handledWL) return;
-      // Ticket denúncia
       const handledT = await handleTicketModal(interaction);
       if (handledT) return;
     }
@@ -108,17 +95,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 client.on(Events.MessageCreate, async (msg) => {
   try {
-    // PVE capture no canal específico
     await handlePVEMessage(client, msg, cfg);
-    // Mensagens por DM para WL
     if (!msg.guild) await handleDMMessage(msg, client);
   } catch (e) {
     console.error('Message handler error:', e);
   }
 });
 
-// Encerramento limpo
-for (const sig of ['SIGINT', 'SIGTERM']) {
+for (const sig of ['SIGINT','SIGTERM']) {
   process.on(sig, () => {
     try { client.destroy(); } catch {}
     process.exit(0);

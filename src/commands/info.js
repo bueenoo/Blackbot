@@ -1,5 +1,8 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
-import cfg from '../config.json' assert { type: 'json' };
+import fs from 'fs';
+import path from 'path';
+
+const cfg = JSON.parse(fs.readFileSync(path.resolve('./src/config.json'), 'utf8'));
 
 const PVE_HOST = '189.127.165.165';
 const PVE_PORT = '2382';

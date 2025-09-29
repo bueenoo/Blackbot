@@ -9,8 +9,7 @@
   "scripts": {
     "start": "node src/index.js",
     "send:verify": "node src/tools/sendLanguageMessage.js",
-    "register": "node src/tools/register-commands.js",
-    "lint": "echo \"(optional) add eslint\" && exit 0"
+    "register": "node src/tools/register-commands.js"
   },
   "dependencies": {
     "discord.js": "^14.16.3",
