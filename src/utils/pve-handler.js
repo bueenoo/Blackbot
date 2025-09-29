@@ -1,11 +1,5 @@
-import { isValidSteamId64 } from './validate.js';
+import { isValidSteamId64 } from './validate-steam.js';
 
-/**
- * Handler para cadastro PVE:
- * - Lê mensagens no canal configurado (texto simples com SteamID64)
- * - Dá o cargo PVE ao autor
- * - Loga no canal de logs com SteamID, nome, data/hora
- */
 export async function handlePVEMessage(client, msg, cfg) {
   try {
     if (msg.author.bot) return;
@@ -29,25 +23,18 @@ export async function handlePVEMessage(client, msg, cfg) {
       return;
     }
 
-    // Evitar duplicado
     if (!member.roles.cache.has(role.id)) {
       await member.roles.add(role, 'Cadastro PVE automático por SteamID');
     }
 
-    // Log
     const logId = cfg.canalPVELog;
     try {
       const logCh = await client.channels.fetch(logId);
       const when = new Date().toISOString().replace('T', ' ').split('.')[0];
-      await logCh.send(`🧾 **Registro PVE**
-• SteamID: \`${steamId}\`
-• Discord: ${msg.author.tag} (<@${msg.author.id}>)
-• Data/Hora: ${when}`);
+      await logCh.send(`🧾 **Registro PVE**\n• SteamID: \`${steamId}\`\n• Discord: ${msg.author.tag} (<@${msg.author.id}>)\n• Data/Hora: ${when}`);
     } catch {}
 
-    await msg.reply(`✅ Cadastro confirmado! Cargo PVE aplicado.
-SteamID registrada: \`${steamId}\``);
-
+    await msg.reply(`✅ Cadastro confirmado! Cargo PVE aplicado.\nSteamID registrada: \`${steamId}\``);
   } catch (e) {
     console.error('PVE handler error:', e);
   }

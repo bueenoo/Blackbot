@@ -1,15 +1,12 @@
 {
   "name": "yellowbot-main-fixed",
-  "version": "2.0.2",
+  "version": "2.0.4",
   "type": "module",
   "private": true,
-  "engines": {
-    "node": ">=18.17"
-  },
   "scripts": {
     "start": "node src/index.js",
-    "send:verify": "node src/tools/sendLanguageMessage.js",
-    "register": "node src/tools/register-commands.js"
+    "register": "node src/tools/register-commands.js",
+    "send:verify": "node src/tools/sendLanguageMessage.js"
   },
   "dependencies": {
     "discord.js": "^14.16.3",
