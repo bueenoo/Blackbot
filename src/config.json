@@ -1,0 +1,18 @@
+{
+  "clientId": "1401945111121756170",
+  "guildId": "1401233767246467333",
+  "cargoRP": "1401248793965629502",
+  "cargoPVE": "1401248503987962028",
+  "canalVerificacao": "1401950478761332776",
+  "canalWhitelistRespostas": "1401951520114737193",
+  "categoriaTickets": "1401951450078117959",
+  "logTicketsChannelId": "1401951731541213234",
+  "adminRoleId": "1401248428280778914",
+  "staffRoles": [
+    "1401235779748892694",
+    "1411977603102933103"
+  ],
+  "allowedInfoChannel": "1402172138395271239",
+  "canalPVEEntrada": "1401951160629461002",
+  "canalPVELog": "1402195335048204298"
+}
