@@ -1,12 +1,12 @@
 import {
   ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder,
-  ModalBuilder, TextInputBuilder, TextInputStyle
+  ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits
 } from 'discord.js';
-import cfg from '../config.json' assert { type: 'json' };
+import fs from 'fs';
+import path from 'path';
+const cfg = JSON.parse(fs.readFileSync(path.resolve('./src/config.json'), 'utf8'));
 
-/** Estado temporário (memória do processo) */
-const sessions = new Map(); // userId -> { lang, step, data }
-const reviewIndex = new Map(); // reviewMessageId -> { guildId, userId, data }
+const sessions = new Map();
 
 const QUESTIONS_PT = [
   { key: 'nome', prompt: 'Seu nome completo?' },
@@ -24,29 +24,18 @@ const QUESTIONS_ES = [
   { key: 'historia', prompt: 'Escribe la historia de tu personaje (hasta 1000 caracteres).' },
 ];
 
-function getQuestions(lang='pt') {
-  return lang==='es' ? QUESTIONS_ES : QUESTIONS_PT;
-}
+function getQuestions(lang='pt') { return lang==='es' ? QUESTIONS_ES : QUESTIONS_PT; }
 
 export async function startWL(interaction, lang='pt') {
   const user = interaction.user;
   sessions.set(user.id, { lang, step: 0, data: {} });
-  await interaction.reply({
-    content: lang==='es'
-      ? '📝 Empecemos la WL por DM. Revisa tus mensajes directos.'
-      : '📝 Vamos começar a WL por DM. Veja sua DM.',
-    ephemeral: true
-  });
+  await interaction.reply({ content: lang==='es' ? '📝 Empecemos la WL por DM. Revisa tus mensajes directos.' : '📝 Vamos começar a WL por DM. Veja sua DM.', ephemeral: true });
   try {
     const dm = await user.createDM();
-    await dm.send(lang==='es'
-      ? '¡Hola! Responde a las preguntas una por una. Para cancelar, envía `cancelar`.'
-      : 'Olá! Responda às perguntas uma por vez. Para cancelar, envie `cancelar`.');
+    await dm.send(lang==='es' ? '¡Hola! Responde a las preguntas una por una. Para cancelar, envía `cancelar`.' : 'Olá! Responda às perguntas uma por vez. Para cancelar, envie `cancelar`.');
     await askNext(user.id, dm);
   } catch {
-    await interaction.followUp({ content: lang==='es'
-      ? '❌ No pude enviarte DM. Verifica tu configuración de privacidad.'
-      : '❌ Não consegui enviar DM. Verifique suas configurações de privacidade.', ephemeral: true });
+    await interaction.followUp({ content: lang==='es' ? '❌ No pude enviarte DM. Verifica tu configuración de privacidad.' : '❌ Não consegui enviar DM. Verifique suas configurações de privacidade.', ephemeral: true });
   }
 }
 
@@ -54,10 +43,7 @@ async function askNext(userId, dm) {
   const sess = sessions.get(userId);
   if (!sess) return;
   const qs = getQuestions(sess.lang);
-  if (sess.step >= qs.length) {
-    await finishAndSendToStaff(userId, dm);
-    return;
-  }
+  if (sess.step >= qs.length) { await finishAndSendToStaff(userId, dm); return; }
   const q = qs[sess.step];
   await dm.send(`**${q.prompt}**`);
 }
@@ -65,15 +51,9 @@ async function askNext(userId, dm) {
 export async function handleDMMessage(msg) {
   if (!msg.guild && !msg.author.bot) {
     const sess = sessions.get(msg.author.id);
-    if (!sess) return; // não está em WL
+    if (!sess) return;
     const content = msg.content?.trim() || '';
-
-    if (/^cancelar$/i.test(content)) {
-      sessions.delete(msg.author.id);
-      await msg.channel.send(sess.lang==='es' ? '❌ WL cancelada.' : '❌ WL cancelada.');
-      return;
-    }
-
+    if (/^cancelar$/i.test(content)) { sessions.delete(msg.author.id); await msg.channel.send('❌ WL cancelada.'); return; }
     const qs = getQuestions(sess.lang);
     const q = qs[sess.step];
     const limit = q.key === 'historia' ? 1000 : 1000;
@@ -84,15 +64,18 @@ export async function handleDMMessage(msg) {
   }
 }
 
+function permMissing(perms, needed) {
+  const missing = needed.filter(p => !perms.has(p));
+  return missing.map(p => PermissionFlagsBits[p] ? p : String(p));
+}
+
 async function finishAndSendToStaff(userId, dm) {
   const sess = sessions.get(userId);
   if (!sess) return;
   sessions.delete(userId);
   const data = sess.data;
 
-  const embed = new EmbedBuilder()
-    .setColor(0x2B2D31)
-    .setTitle(sess.lang==='es' ? 'Nueva WL • ES' : 'Nova WL • PT')
+  const embed = new EmbedBuilder().setColor(0x2B2D31).setTitle(sess.lang==='es' ? 'Nueva WL • ES' : 'Nova WL • PT')
     .addFields(
       { name: 'Usuário', value: `<@${userId}> (${userId})`, inline: false },
       { name: 'Nome', value: data.nome || '-', inline: true },
@@ -104,47 +87,36 @@ async function finishAndSendToStaff(userId, dm) {
       { name: 'Lang', value: sess.lang.toUpperCase(), inline: true }
     );
 
-  // Botões Aprovar / Reprovar
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`wl_aprovar_${userId}`).setLabel(sess.lang==='es'?'Aprobar':'Aprovar').setStyle(3),
-    new ButtonBuilder().setCustomId(`wl_reprovar_${userId}`).setLabel(sess.lang==='es'?'Rechazar':'Reprovar').setStyle(4),
+    new ButtonBuilder().setCustomId(`wl_aprovar_${userId}`).setLabel('Aprovar').setStyle(3),
+    new ButtonBuilder().setCustomId(`wl_reprovar_${userId}`).setLabel('Reprovar').setStyle(4),
   );
 
+  // Resolve canal staff e verifica permissões
+  const staffId = cfg.canalWLStaff || '1401951752055427152';
   try {
-    const staffCh = await dm.client.channels.fetch('1401951752055427152');
-    const reviewMsg = await staffCh.send({ embeds: [embed], components: [row] });
-    reviewIndex.set(reviewMsg.id, { guildId: staffCh.guildId, userId, data });
-    await dm.send(sess.lang==='es'
-      ? '✅ Tu WL fue enviada al staff para revisión. Espera el resultado.'
-      : '✅ Sua WL foi enviada à staff para análise. Aguarde o resultado.');
+    const ch = await dm.client.channels.fetch(staffId);
+    const perms = ch.permissionsFor(dm.client.user.id);
+    const needed = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks];
+    const missing = permMissing(perms, needed);
+    if (missing.length) {
+      await dm.send(`⚠️ Não tenho permissões suficientes em <#${staffId}>: ${missing.join(', ')}. Avise a administração.`);
+      return;
+    }
+    await ch.send({ embeds: [embed], components: [row] });
+    await dm.send('✅ WL enviada para análise da staff. Aguarde o retorno.');
   } catch (e) {
-    await dm.send(sess.lang==='es'
-      ? '⚠️ No pude enviar tu WL al canal del staff. Avisa a la administración.'
-      : '⚠️ Não consegui enviar sua WL ao canal da staff. Avise a administração.');
+    await dm.send(`⚠️ Não consegui enviar sua WL ao canal <#${staffId}>. Erro: ${e?.code || e?.message}`);
   }
 }
 
 export async function handleWLButtons(interaction) {
   const { customId } = interaction;
-  if (customId.startsWith('wl_aprovar_')) {
-    const userId = customId.split('_').pop();
-    await approveWL(interaction, userId);
-    return true;
-  }
+  if (customId.startsWith('wl_aprovar_')) { const userId = customId.split('_').pop(); return approveWL(interaction, userId), true; }
   if (customId.startsWith('wl_reprovar_')) {
     const userId = customId.split('_').pop();
-    // Abrir modal para motivo
-    const modal = new ModalBuilder()
-      .setCustomId(`wl_reject_modal_${userId}`)
-      .setTitle('Motivo da reprovação');
-
-    const input = new TextInputBuilder()
-      .setCustomId('motivo')
-      .setLabel('Explique o motivo')
-      .setStyle(TextInputStyle.Paragraph)
-      .setRequired(true)
-      .setMaxLength(500);
-
+    const modal = new ModalBuilder().setCustomId(`wl_reject_modal_${userId}`).setTitle('Motivo da reprovação');
+    const input = new TextInputBuilder().setCustomId('motivo').setLabel('Explique o motivo').setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(500);
     modal.addComponents(new ActionRowBuilder().addComponents(input));
     await interaction.showModal(modal);
     return true;
@@ -158,17 +130,9 @@ export async function handleWLModal(interaction) {
   const userId = customId.split('_').pop();
   const motivo = interaction.fields.getTextInputValue('motivo');
 
-  const rejectedChannelId = '1402206198668853299';
-  try {
-    const ch = await interaction.client.channels.fetch(rejectedChannelId);
-    await ch.send(`❌ WL reprovada para <@${userId}>.\n**Motivo:** ${motivo}`);
-  } catch {}
-
-  try {
-    const user = await interaction.client.users.fetch(userId);
-    await user.send(`❌ Sua WL foi reprovada.\n**Motivo:** ${motivo}\nVocê pode refazer quando quiser.`);
-  } catch {}
-
+  const rejectedChannelId = cfg.canalWLReprovada;
+  try { const ch = await interaction.client.channels.fetch(rejectedChannelId); await ch.send(`❌ WL reprovada para <@${userId}>.\n**Motivo:** ${motivo}`); } catch {}
+  try { const user = await interaction.client.users.fetch(userId); await user.send(`❌ Sua WL foi reprovada.\n**Motivo:** ${motivo}\nVocê pode refazer quando quiser.`); } catch {}
   await interaction.reply({ content: 'Reprovação registrada e informada.', ephemeral: true });
   return true;
 }
@@ -179,10 +143,7 @@ async function approveWL(interaction, userId) {
     const member = await guild.members.fetch(userId);
     const roleId = cfg.cargoRP;
     await member.roles.add(roleId, 'WL aprovada');
-    try {
-      const user = await interaction.client.users.fetch(userId);
-      await user.send('✅ Parabéns! Sua WL foi aprovada. O cargo RP foi aplicado.');
-    } catch {}
+    try { const user = await interaction.client.users.fetch(userId); await user.send('✅ Parabéns! Sua WL foi aprovada. O cargo RP foi aplicado.'); } catch {}
     await interaction.reply({ content: `✅ WL aprovada e cargo aplicado para <@${userId}>.`, ephemeral: true });
   } catch (e) {
     await interaction.reply({ content: '⚠️ Não consegui aplicar o cargo. Verifique permissões/IDs.', ephemeral: true });
